@@ -29,18 +29,25 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-
+/* Default file permissions are DEF_MODE & ~DEF_UMASK */
+/* $begin createmasks */
 #define DEF_MODE   S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH
 #define DEF_UMASK  S_IWGRP|S_IWOTH
+/* $end createmasks */
 
+/* Simplifies calls to bind(), connect(), and accept() */
+/* $begin sockaddrdef */
 typedef struct sockaddr SA;		// 套接字结构体
+/* $end sockaddrdef */
 
+/* Persistent state for the robust I/O (Rio) package */
+/* $begin rio_t */SA
 #define RIO_BUFSIZE 8192
 typedef struct {
-    int rio_fd;                /* 内部缓存区的描述符 */
-    int rio_cnt;               /* 内部缓存区剩下还未读的字节数  */
-    char *rio_bufptr;          /* 指向内部缓存区的下一个未读字节 */
-    char rio_buf[RIO_BUFSIZE]; /* 内部缓存区 */
+    int rio_fd;                /* Descriptor for this internal buf */
+    int rio_cnt;               /* Unread bytes in internal buf */
+    char *rio_bufptr;          /* Next unread byte in internal buf */
+    char rio_buf[RIO_BUFSIZE]; /* Internal buffer */
 } rio_t;
 /* $end rio_t */
 
@@ -49,9 +56,9 @@ extern int h_errno;    /* Defined by BIND for DNS errors */
 extern char **environ; /* Defined by libc */
 
 /* Misc constants */
-#define	MAXLINE	 8192  /* 每行最大字符数 */
-#define MAXBUF   8192  /* I/O缓存区的最大容量 */
-#define LISTENQ  1024  /* 监听的第二个参数 */
+#define	MAXLINE	 8192  /* Max text line length */
+#define MAXBUF   8192  /* Max I/O buffer size */
+#define LISTENQ  1024  /* Second argument to listen() */
 
 /* Our own error-handling functions */
 void unix_error(char *msg);
@@ -175,10 +182,9 @@ ssize_t	rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen);
 /* Wrappers for Rio package */
 ssize_t Rio_readn(int fd, void *usrbuf, size_t n);
 void Rio_writen(int fd, void *usrbuf, size_t n);
-void Rio_readinitb(rio_t *rp, int fd);			// 将程序的内部缓存区与描述符相关联
+void Rio_readinitb(rio_t *rp, int fd);
 ssize_t Rio_readnb(rio_t *rp, void *usrbuf, size_t n);
-ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen); /*从内部缓存区读出一个文本行至buf中，以null字符来结束这个文本行。当然，
-    每行最大的字符数量不能超过MAXLINE。*/
+ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen);
 
 /* Reentrant protocol-independent client/server helpers */
 int open_clientfd(char *hostname, char *port);

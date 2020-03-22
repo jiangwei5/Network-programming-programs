@@ -176,7 +176,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
 
 /*
 	打开文件名为filename的文件，把它映射到一个虚拟存储器空间，将文件的filesize字节映射到从地址srcp
-	开始的虚拟存储区域。关闭文件描述符srcfd，把虚拟存储去的数据写入fd描述符，最后释放虚拟存储器区域。
+	开始的虚拟存储区域。关闭文件描述符srcfd，把虚拟存储区的数据写入fd描述符，最后释放虚拟存储器区域。
 */
 void serve_static(int fd, char *filename, int filesize)
 {

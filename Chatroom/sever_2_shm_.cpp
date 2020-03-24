@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #define USER_LIMIT 5
 #define BUFFER_SIZE 1024
@@ -27,9 +28,9 @@ struct client_data
 	int connfd;
 	pid_t pid;
 	int pipefd[2];
-}
+};
 
-static const char* shm_name = "/my_shm";
+const static  char* shm_name = "/my_shm";
 int sig_pipefd[2];
 int epollfd;
 int listenfd;
@@ -57,7 +58,7 @@ void addfd(int epollfd, int fd)
 	epoll_event event;
 	event.data.fd = fd;
 	event.events = EPOLLIN | EPOLLET;
-	epoll_ctl(epollfd, EPOLL_CTL_ADD, FD, &event);
+	epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
 	setnonblocking(fd);
 }
 
@@ -76,7 +77,7 @@ void addsig(int sig, void(* handler)(int), bool restart = true)
 	sa.sa_handler = handler;
 	if(restart)
 	{
-		sa.sa_flag |= SA_RESTART;
+		sa.sa_flags |= SA_RESTART;
 	}
 	sigfillset(&sa.sa_mask);
 	assert(sigaction(sig, &sa, NULL) != -1);
@@ -111,6 +112,7 @@ int run_child(int idx, client_data* users, char* share_mem)
 	addfd(child_epollfd, connfd);
 	int pipefd = users[idx].pipefd[1];
 	addfd(child_epollfd, pipefd);
+	int ret;
 	/* 子进程需要设置自己的信号处理函数 */
 	addsig(SIGTERM, child_term_handler, false);
 
@@ -147,7 +149,7 @@ int run_child(int idx, client_data* users, char* share_mem)
 				else
 				{
 					/* 成功读取客户数据后就通知主进程（通过管道）来处理*/
-					send(pipefd, (char* )& idx, sizeof(idx), 0)
+					send(pipefd, (char* )& idx, sizeof(idx), 0);
 				}
 			}
 			/* 主进程通知本进程（通过管道） 将第client个客户的数据发送到本晋城负责的客户端*/
@@ -237,12 +239,12 @@ int main(int argc, char * argv [])
 	bool terminate = false;
 
 	/* 创建贡献内存，作为所有客户socket连接的读缓存 */
-	shmfd = shm_open(shm_name, O_CREATE | O_RDWR, 0666);
+	shmfd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
 	assert(shmfd != -1);
-	ret = ftruncatr(shmfd, USER_LIMIT * BUFFER_SIZE);
+	ret = ftruncate(shmfd, USER_LIMIT * BUFFER_SIZE);
 	assert(ret != -1);
 
-	share_mem = (char*) mmp(NULL, USER_LIMIT* BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd， 0)；
+	share_mem = (char*) mmap(NULL, USER_LIMIT* BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 	assert(shmfd);
 
 	while(!stop_server)
@@ -263,7 +265,7 @@ int main(int argc, char * argv [])
 				socklen_t client_addrlength = sizeof(client_address);
 				int connfd = accept(listenfd, (struct sockaddr*)& client_address, &client_addrlength);
 
-				if(confd < 0)
+				if(connfd < 0)
 				{
 					printf("errno is : %d\n", errno);
 					continue;
@@ -273,14 +275,14 @@ int main(int argc, char * argv [])
 					const char* info = "too many users\n";
 					printf("%s", info);
 					send(connfd, info, strlen(info), 0);
-					close(confd);
+					close(connfd);
 					continue;
 				}
 				/* 保存user_count 个客户连接的相关数据 */
-				user[user_count].address = client_address;
+				users[user_count].address = client_address;
 				users[user_count].connfd = connfd;
 				/* 在主进程和子进程间建立管道， 以传递必要的数据 */
-				ret = socketpair(PF_UNIX, SOCK_STREAM, 0, user[user_count].pipefd);
+				ret = socketpair(PF_UNIX, SOCK_STREAM, 0, users[user_count].pipefd);
 				assert(ret != -1);
 				pid_t pid = fork();
 				if(pid < 0)
@@ -304,7 +306,7 @@ int main(int argc, char * argv [])
 					close(connfd);
 					close(users[user_count].pipefd[1]);
 					addfd(epollfd, users[user_count].pipefd[0]);
-					user[user_count].pid = pid;
+					users[user_count].pid = pid;
 					/* 记录新的客户连接在数组users中的索引值，建立进程pid和该索引值之间的映射关系 */
 					sub_process[pid] = user_count;
 					user_count++;
@@ -331,7 +333,7 @@ int main(int argc, char * argv [])
 						switch(signals[i])
 						{
 							/* 子进程退出， 表示有某个客户端关闭了连接 */
-							case SIGCHLD：
+							case SIGCHLD:
 							{
 								pid_t pid;
 								int stat;
@@ -401,7 +403,7 @@ int main(int argc, char * argv [])
 					/*向除负责处理第child 个客户连接的紫禁城之外的其他子进程发送消息，通知它们有客户数据要写*/
 					for(int j = 0; j < user_count; ++j)
 					{
-						if(user[j].pipefd[0] != sockfd)
+						if(users[j].pipefd[0] != sockfd)
 						{
 							printf("send data to child accross pipe\n");
 							send(users[j].pipefd[0], (char*)&child, sizeof(child), 0);
